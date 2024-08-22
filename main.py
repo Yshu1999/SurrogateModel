@@ -12,7 +12,7 @@ def main():
     parents_size = 50  # Number of parents
 
     # Problem-specific setup, for example ZDT1 problem
-    problem = "ackley"
+    problem = "bukin"
 
     # Create an instance of the GeneticAlgorithm
     ga = GeneticAlgorithm(num_gen, problem, pop_size, param_size, lb, ub, parents_size)

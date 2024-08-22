@@ -86,8 +86,12 @@ class FitnessEvaluator:
         a = 20
         b = 0.2
         c = 2 * np.pi
-        return -a * np.exp(-b * np.sqrt(0.5 * np.sum(x ** 2, axis=1))) - np.exp(
-            0.5 * np.sum(np.cos(c * x), axis=1)) + a + np.e
+        d = x.shape[1]  # Get the number of dimensions (columns)
+
+        term1 = -a * np.exp(-b * np.sqrt(np.sum(x ** 2, axis=1) / d))
+        term2 = -np.exp(np.sum(np.cos(c * x), axis=1) / d)
+
+        return term1 + term2 + a + np.e
 
     def bukin(self, x):
         term1 = 100 * np.sqrt(np.abs(x[:, 1] - 0.01 * x[:, 0] ** 2))
