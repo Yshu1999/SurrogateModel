@@ -98,10 +98,25 @@ class FitnessEvaluator:
         term2 = 0.01 * np.abs(x[:, 0] + 10)
         return term1 + term2
 
-    def cross_in_tray(x):
-        term1 = np.sin(x[0]) * np.sin(x[1])
-        term2 = np.exp(np.abs(100 - np.sqrt(x[0] ** 2 + x[1] ** 2) / np.pi))
-        return -0.0001 * (np.abs(term1 * term2) + 1) ** 0.1
+    def cross_in_tray(self, x):
+        # Check if x is a 2D array (population) or a 1D array (single individual)
+        if x.ndim == 2:
+            # x is a 2D array; process the entire population
+            results = []
+            for individual in x:
+                x0, x1 = individual[0], individual[1]
+                term1 = np.sin(x0) * np.sin(x1)
+                term2 = np.exp(np.abs(100 - np.sqrt(x0 ** 2 + x1 ** 2) / np.pi))
+                result = -0.0001 * (np.abs(term1 * term2) + 1) ** 0.1
+                results.append(result)
+            return np.array(results)
+        else:
+            # x is a 1D array; process a single individual
+            x0, x1 = x[0], x[1]
+            term1 = np.sin(x0) * np.sin(x1)
+            term2 = np.exp(np.abs(100 - np.sqrt(x0 ** 2 + x1 ** 2) / np.pi))
+            result = -0.0001 * (np.abs(term1 * term2) + 1) ** 0.1
+            return result
 
     def drop_wave(x):
         x1, x2 = x
