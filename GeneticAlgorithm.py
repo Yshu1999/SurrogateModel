@@ -5,7 +5,8 @@ import FitnessEvaluator as fe
 import SelectNextPopulation as snp
 import matplotlib.pyplot as plt
 import csv
-
+import MLPClassifier as mlp
+from DataProcessor import DatasetProcessor
 
 
 class GeneticAlgorithm:
@@ -38,13 +39,27 @@ class GeneticAlgorithm:
 
         # Write initial generation's best fitness and population
         self._record_generation(0)
+        training_pop = self.pop
+        training_fitness = self.fitness_values.reshape(-1, 1)
 
         # Run the genetic algorithm for num_gen generations
         for gen in range(1, self.num_gen + 1):
             offsprings = gp.GeneratePopulation(self.pop_size, self.param_size, self.lb,
                                                self.ub).generate_offsprings(self.pop, self.fitness_values)
 
-            offsprings_fitness_values = fe.FitnessEvaluator(self.problem).evaluate_fitness(offsprings)
+            if gen % 2 == 0:
+                offsprings_fitness_values = fe.FitnessEvaluator(self.problem).evaluate_fitness(offsprings)
+            else:
+                dp = DatasetProcessor(training_pop, training_fitness)
+                mlp_model = mlp.MLPClassifierModel(dp)
+                if gen == 1:
+                    mlp_model.train()
+                else:
+                    mlp_model.retrain_model()
+                offsprings_fitness_values = mlp_model.predict_with_saved_model(
+                    DatasetProcessor.Decision_Variable_Augmentation(training_pop, offsprings))  # need to do aug on
+                # real unknown pop and pass it
+            # Combine population and offsprings
             combined = np.vstack((self.pop, offsprings))
             combined_fitness_values = np.hstack((self.fitness_values, offsprings_fitness_values))
 
@@ -59,6 +74,9 @@ class GeneticAlgorithm:
                 self.pop = snp.SelectNextPopulation().select_next_population(combined, combined_fitness_values, fronts,
                                                                              self.pop_size)
                 self.fitness_values = fe.FitnessEvaluator(self.problem).evaluate_fitness(self.pop)
+            if gen % 2 == 0:
+                training_pop = np.vstack((training_pop, self.pop))
+                training_fitness = np.vstack((training_fitness, self.fitness_values.reshape(-1, 1)))
 
             # Record the best fitness and population for this generation
             self._record_generation(gen)
