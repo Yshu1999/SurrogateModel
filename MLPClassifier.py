@@ -1,10 +1,13 @@
 import joblib
+import numpy as np
 from sklearn.metrics import mean_squared_error
 from sklearn.neural_network import MLPClassifier
 from DataProcessor import DatasetProcessor
+import matplotlib.pyplot as plt
 
 
 class MLPClassifierModel:
+    error_list = []  # To store the error for each training session
 
     def __init__(self, dataset_processor: DatasetProcessor):
         """
@@ -21,7 +24,6 @@ class MLPClassifierModel:
         # Access the required data via the DatasetProcessor instance
         self.YTrain_class = self.dp.cls(self.dp.y_train, self.dp.y_train)
         self.YTest_class = self.dp.cls(self.dp.y_train, self.dp.y_test)
-        self.error_list = []  # To store the error for each training session
 
     def train(self):
         """Train the model using data from the DatasetProcessor and save the trained model."""
@@ -36,8 +38,7 @@ class MLPClassifierModel:
         """Load the saved model and predict values for the test set."""
         # Load the saved model from disk
         self.model = joblib.load('trained_mlp_classifier.pkl')
-        print("Model loaded from 'trained_mlp_classifier.pkl'")
-
+        y_predict = []
         # Use Test from DatasetProcessor if not provided
         if Test is not None:
             # Predict using the loaded model
@@ -48,10 +49,19 @@ class MLPClassifierModel:
             # Predict using the loaded model
             self.predicted_YTest = self.model.predict(Test)
             # Use the saved model to predict
-            mean = self.dp.forClassification(self.predicted_YTest.reshape(-1, 1))
+            for i in range(0, len(self.predicted_YTest), len(self.dp.y_train)):
+                # Slice y_train and predicted_YTest for this batch
+                predicted_YTest_batch = self.predicted_YTest[i:i + len(self.dp.y_train)].reshape(-1, 1)
+
+                # Call forClassification on the current batch
+                mean = self.dp.forClassification(self.dp.y_train, predicted_YTest_batch)
+
+                # Append the result to the means list
+                y_predict.append(mean)
+
             # Calculate Mean Squared Error
-            mse = mean_squared_error(self.dp.y_test, mean)
-            self.error_list.append(mse)  # Store the error in the error_list
+        mse = mean_squared_error(self.dp.y_test, y_predict)
+        self.error_list.append(mse)  # Store the error in thike error_list
 
     def retrain_model(self):
         """Retrain the model with new data and save the updated model."""
@@ -68,3 +78,11 @@ class MLPClassifierModel:
 
         # Predict again with the retrained model
         self.predict_with_saved_model()
+
+    # Assuming self.error_list contains the MSE values for each generation
+
+    @staticmethod
+    def plot_error_vs_generation():
+        return MLPClassifierModel.error_list
+
+    # Call this method in your class after your training completes

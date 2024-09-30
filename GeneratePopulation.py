@@ -15,10 +15,9 @@ class GeneratePopulation:
     def generate_population(self):
         population = np.random.uniform(np.zeros(self.param_size), np.ones(self.param_size),
                                        (self.pop_size, self.param_size))
-        # population = np.round(population, 2)
         return population
 
-    def generate_offsprings(self, population, fitness_values):
+    def generate_offsprings(self, population, fitness_values, random_state):
         offsprings = []
         parents = []
 
@@ -43,21 +42,22 @@ class GeneratePopulation:
         for i in range(0, self.pop_size, 2):
             parent1 = parents[i]
             parent2 = parents[i + 1]
-            child1, child2 = self.sbx(parent1, parent2)
+            child1, child2 = self.sbx(parent1, parent2, random_state )
             offsprings.append(child1)
             offsprings.append(child2)
 
-        return np.array(offsprings)
+        return np.array(offsprings)[0:self.pop_size]
 
-    def sbx(self, parent1, parent2, crossover_prob=0.9):
+    def sbx(self, parent1, parent2, random_state=none, crossover_prob=0.9):
         eta = 20
         child1 = np.empty(parent1.shape)
         child2 = np.empty(parent2.shape)
 
         # Generate a random number to decide if crossover should happen
-        if np.random.rand() < crossover_prob:
+        if random_state.rand() < crossover_prob:
             for i in range(len(parent1)):
-                u = np.random.rand()
+                u = random_state.rand()
+                print("u", u)
                 if u <= 0.5:
                     beta = (2 * u) ** (1 / (eta + 1))
                 else:
@@ -70,22 +70,22 @@ class GeneratePopulation:
             child2 = parent2.copy()
 
         # Apply polynomial mutation
-        mutated_child1 = self.polynomial_mutation(child1[np.newaxis, :], mutation_rate=0.3)[0]
-        mutated_child2 = self.polynomial_mutation(child2[np.newaxis, :], mutation_rate=0.3)[0]
+        mutated_child1 = self.polynomial_mutation(child1[np.newaxis, :],random_state )[0]
+        mutated_child2 = self.polynomial_mutation(child2[np.newaxis, :], random_state)[0]
 
         return mutated_child1, mutated_child2
 
-    def polynomial_mutation(self, offspring, mutation_rate=0.05, eta_m=20):
+    def polynomial_mutation(self, offspring, random_state = none, mutation_rate=0.05, eta_m=20):
         num_variables = offspring.shape[0]
         mutated_offspring = np.copy(offspring)
 
         for j in range(num_variables):
-            if np.random.rand() < mutation_rate:
+            if random_state.rand() < mutation_rate:
                 y = offspring[j]
                 yl = 0  # Lower bound of the variable
                 yu = 1  # Upper bound of the variable
 
-                u = np.random.rand()  # Random number between 0 and 1
+                u = random_state.rand()  # Random number between 0 and 1
                 if u <= 0.5:
                     delta_i = (2 * u + (1 - 2 * u) * (1 - mutation_rate) ** (eta_m + 1)) ** (1 / (eta_m + 1)) - 1
                     delta = delta_i * (y - yl)

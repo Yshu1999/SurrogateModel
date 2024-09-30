@@ -118,46 +118,50 @@ class DatasetProcessor:
                 idx += 1
         return pd.DataFrame(cls_obj)
 
-    def forClassification(self, predicted_YTest):
+    @staticmethod
+    def forClassification(y_train, predicted_YTest):
         col = 3
-        row = self.y_train.shape[0] * self.y_test.shape[0]
+        row = y_train.shape[0]
         pl = [[0] * col for _ in range(row)]
         idx = 0
+        for j in range(len(y_train)):
+            for k in range(col):
+                if k == 0:
+                    pl[idx][k] = j + 1
+                elif k == 1:
+                    pl[idx][k] = y_train.iat[j, 0]
+                else:
+                    pl[idx][k] = predicted_YTest[idx]
+            idx += 1
+        pl_df = pd.DataFrame(pl, columns=['samples', 'values', 'class'])
 
-        for i in range(len(self.y_test)):
-            for j in range(len(self.y_train)):
-                for k in range(col):
-                    if k == 0:
-                        pl[idx][k] = i + 1
-                    elif k == 1:
-                        pl[idx][k] = self.y_train.iat[j, 0]
-                    else:
-                        pl[idx][k] = predicted_YTest[idx]
-                idx = idx + 1
+        # Get the indices where predicted_ytest is 1
+        indices_1 = pl_df[pl_df['class'] == 1].index
 
-        self.pl = pd.DataFrame(pl, columns=['samples', 'values', 'class'])
+        # Find the rows where predicted_YTest is 2
 
-        idx = 0
-        k = 0
-        mean = [0 for _ in range(len(self.y_test))]
+        indices_2 = pl_df[pl_df['class'] == 2].index
 
-        for i in range(len(self.y_test)):
-            minm = 10000
-            maxm = -10000
-            for j in range(len(self.y_train)):
-                if self.pl.iat[idx, 2] == 2:
-                    if minm > self.pl.iat[idx, 1]:
-                        minm = self.pl.iat[idx, 1]
+        # Find the max value of y_train where predicted_YTest is 1
+        if not indices_1.empty:
+            max_value = pl_df.loc[indices_1, 'values'].max()
+        else:
+            max_value = None  # No 1s found in predicted_YTest
 
-                elif self.pl.iat[idx, 2] == 1:
-                    if maxm < self.pl.iat[idx, 1]:
-                        maxm = self.pl.iat[idx, 1]
-                idx = idx + 1
-            if minm == 10000:
-                minm = maxm
-            if maxm == -10000:
-                maxm = minm
-            mean[k] = (minm + maxm) / 2
-            k = k + 1
-        mean = pd.DataFrame(mean)
+        # Find the min value of y_train where predicted_YTest is 2
+        if not indices_2.empty:
+            min_value = pl_df.loc[indices_2, 'values'].min()
+        else:
+            min_value = None  # No 2s found in predicted_YTest
+
+        # Calculate the mean based on available values
+        if max_value is not None and min_value is not None:
+            mean = ((max_value) + (min_value)) / 2
+        elif max_value is not None:
+            mean = max_value  # If all values in predicted_YTest are 1
+        elif min_value is not None:
+            mean = min_value  # If all values in predicted_YTest are 2
+        else:
+            mean = 0  # If no valid values are found
+
         return mean
