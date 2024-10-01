@@ -57,7 +57,6 @@ class GeneratePopulation:
         if random_state.rand() < crossover_prob:
             for i in range(len(parent1)):
                 u = random_state.rand()
-                print("u", u)
                 if u <= 0.5:
                     beta = (2 * u) ** (1 / (eta + 1))
                 else:
