@@ -53,13 +53,18 @@ class GeneticAlgorithm:
         # Run the genetic algorithm for num_gen generations
         for gen in range(1, self.num_gen + 1):
             # Generate offsprings for pure GA and hybrid GA separately
-            offsprings_pure_ga = gp.GeneratePopulation(self.pop_size, self.param_size, self.lb,
-                                                       self.ub).generate_offsprings(
-                self.pop_pure_ga, self.fitness_values_pure_ga, random_state)
+            # Initialize GeneratePopulation once
+            x = gp.GeneratePopulation(self.pop_size, self.param_size, self.lb, self.ub)
 
-            offsprings_hybrid_ga = gp.GeneratePopulation(self.pop_size, self.param_size, self.lb,
-                                                         self.ub).generate_offsprings(
-                self.pop_hybrid_ga, self.fitness_values_hybrid_ga, random_state)
+            # Generate offsprings for pure GA
+            offsprings_pure_ga = x.generate_offsprings(
+                self.pop_pure_ga, self.fitness_values_pure_ga, random_state
+            )
+
+            # Generate offsprings for hybrid GA
+            offsprings_hybrid_ga = x.generate_offsprings(
+                self.pop_hybrid_ga, self.fitness_values_hybrid_ga, random_state
+            )
 
             # Parallel execution for fitness evaluation (pure GA and hybrid GA)
             offsprings_fitness_values_pure_ga, offsprings_fitness_values_hybrid = self.run_parallel_evaluations(
@@ -82,10 +87,9 @@ class GeneticAlgorithm:
             # Selection for hybrid GA
             self.pop_hybrid_ga, self.fitness_values_hybrid_ga = self.update_population_hybrid_ga(
                 combined_hybrid_ga, combined_fitness_values_hybrid_ga, gen)
-            if gen == 2:
+            if gen % 2 == 0:
                 training_pop = np.vstack((training_pop, self.pop_hybrid_ga))
                 training_fitness = np.vstack((training_fitness, self.fitness_values_hybrid_ga.reshape(-1, 1)))
-
             # Record the best fitness and population for this generation (pure GA)
             self._record_generation(gen, self.pop_pure_ga, self.fitness_values_pure_ga, self.pop_hybrid_ga,
                                     self.fitness_values_hybrid_ga)
