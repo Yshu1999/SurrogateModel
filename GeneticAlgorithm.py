@@ -59,8 +59,6 @@ class GeneticAlgorithm:
 
             # Combine parent and offspring populations
             combined = self.pop + offsprings
-            for individual in combined:
-                print(f"Fitness: {individual.fitness}, Type: {type(individual.fitness)}")
             # Combine fitness values for the parents and offsprings
             combined_fitness_values = np.array([individual.fitness for individual in combined])
 
@@ -92,8 +90,7 @@ class GeneticAlgorithm:
 
         # Loop through each individual and evaluate its fitness
         for individual in pop:
-            individual.evaluate_fitness(fitness_evaluator.evaluate_fitness,
-                                        individual.penalty_function)  # Call evaluate_fitness for each individual
+            individual.evaluate_fitness(fitness_evaluator.evaluate_fitness)  # Call evaluate_fitness for each individual
 
     def _record_generation(self, gen):
         # Find the individual with the best fitness (assuming minimization)
