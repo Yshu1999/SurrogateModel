@@ -7,13 +7,14 @@ import FitnessEvaluator as fe
 import SelectNextPopulation as snp
 import matplotlib.pyplot as plt
 import csv
+from individual import Individual
 import MLPClassifier as mlp
 
 from DataProcessor import DatasetProcessor
 
 
 class GeneticAlgorithm:
-    def __init__(self, num_gen, problem, pop_size, param_size, lb, ub):
+    def __init__(self, num_gen, pop_size, param_size, lb, ub, problem):
         self.num_gen = num_gen
         self.problem = problem
         self.pop_size = pop_size
@@ -23,82 +24,93 @@ class GeneticAlgorithm:
         self.pop = None
         self.fitness_values = None
         self.best_fitness_values = []
-
+        self.training_pop =[]
+        self.training_fitness = []
     def initialize(self):
-        # Initialize the population
-        self.pop = gp.GeneratePopulation(self.pop_size, self.param_size, self.lb,
-                                         self.ub).generate_population()
-
+        # Initialize the population as a list of Individual objects
+        self.pop = [Individual(np.random.uniform(self.lb, self.ub, self.param_size)) for _ in range(self.pop_size)]
+        self.evaluate_population_fitness(self.pop)
+        for individual in self.pop:
+            self.training_pop.append(individual.solution)  # Append the solution (parameter values)
+            self.training_fitness.append(individual.fitness)  # Append the fitness value
+        for idx, individual in enumerate(self.pop):
+            print(f"Individual[{idx}]: Solution = {individual.solution}, Fitness = {individual.fitness}")
     def run(self):
-        random_seed = 42
-        random_state = np.random.RandomState(random_seed)
-        # Evaluate the initial population's fitness
-        self.fitness_values = fe.FitnessEvaluator(self.problem).evaluate_fitness(self.pop)
-        print(
-            f"Population[{0}] :\n {pd.concat([pd.DataFrame(self.fitness_values, columns=['fitness']), pd.DataFrame(self.pop)], axis=1)}")
-
+        # Evaluate the initial population's fitness (already compatible with Individual objects)
+        #random_seed = 42
+        #random_state = np.random.RandomState(random_seed)
         # Clear the CSV file and write headers
         with open('C:/Users/vyshn/OneDrive/Desktop/genetic_algorithm_results.csv', 'w', newline='') as f:
             writer = csv.writer(f)
-            headers = ['Generation', 'Best Fitness Value'] + [f'parameter {i + 1}' for i in
-                                                              range(self.param_size)]
+            headers = ['Generation', 'Best Fitness Value'] + [f'parameter {i + 1}' for i in range(self.param_size)]
             writer.writerow(headers)
 
         # Write initial generation's best fitness and population
         self._record_generation(0)
-        training_pop = self.pop
-        training_fitness = self.fitness_values.reshape(-1, 1)
-
         # Run the genetic algorithm for num_gen generations
         for gen in range(1, self.num_gen + 1):
-            offsprings = gp.GeneratePopulation(self.pop_size, self.param_size, self.lb,
-                                               self.ub).generate_offsprings(self.pop, self.fitness_values, random_state )
-
+            offsprings = gp.GeneratePopulation(self.pop_size, self.param_size, self.lb, self.ub).generate_offsprings(
+                self.pop)
             if gen % 2 == 0:
-                offsprings_fitness_values = fe.FitnessEvaluator(self.problem).evaluate_fitness(offsprings)
+                self.evaluate_population_fitness(offsprings)
             else:
-                offsprings_fitness_values = self.predict_fitness(gen, training_pop, pd.DataFrame(training_fitness),
-                                                                 offsprings)
-            # Combine population and offsprings
-            combined = np.vstack((self.pop, offsprings))
-            combined_fitness_values = np.hstack((self.fitness_values, offsprings_fitness_values))
+                self.predict_fitness(gen, self.training_pop, pd.DataFrame(
+                    self.training_fitness), offsprings)
 
-            if self.fitness_values.ndim == 1:
-                sorted_indices = np.argsort(combined_fitness_values)
-                best_indices = sorted_indices[:min(self.pop_size, len(sorted_indices))]
+            # Combine parent and offspring populations
+            combined = self.pop + offsprings
+            for individual in combined:
+                print(f"Fitness: {individual.fitness}, Type: {type(individual.fitness)}")
+            # Combine fitness values for the parents and offsprings
+            combined_fitness_values = np.array([individual.fitness for individual in combined])
 
-                self.pop = combined[best_indices]
-                self.fitness_values = combined_fitness_values[best_indices]
+            # If single-objective optimization
+            if np.isscalar(self.pop[0].fitness):
+                combined.sort(key=lambda ind: ind.fitness)
+                # Select the best individuals based on fitness
+                self.pop = combined[:self.pop_size]
+                for idx, individual in enumerate(combined):
+                    print(f"Individual[{idx}]: Solution = {individual.solution}, Fitness = {individual.fitness}")
             else:
+                # For multi-objective optimization, use non-dominated sorting and selection
                 fronts, ranks = nds.NonDominatedSorting().nds(combined_fitness_values)
                 self.pop = snp.SelectNextPopulation().select_next_population(combined, combined_fitness_values, fronts,
                                                                              self.pop_size)
                 self.fitness_values = fe.FitnessEvaluator(self.problem).evaluate_fitness(self.pop)
             if gen % 2 == 0:
-                training_pop = np.vstack((training_pop, self.pop))
-                training_fitness = np.vstack((training_fitness, self.fitness_values.reshape(-1, 1)))
-                print(len(training_pop))
+                for individual in self.pop:
+                    self.training_pop.append(individual.solution)  # Append the solution (parameter values)
+                    self.training_fitness.append(individual.fitness)  # Append the fitness value
+                print(len(self.training_pop))
+
             # Record the best fitness and population for this generation
             self._record_generation(gen)
-            print(
-                f"Population[{gen}] :\n {pd.concat([pd.DataFrame(self.fitness_values, columns=['fitness']), pd.DataFrame(self.pop)], axis=1)}")
+
+    def evaluate_population_fitness(self, pop):
+        """Evaluate fitness for each individual in the population."""
+        fitness_evaluator = fe.FitnessEvaluator(self.problem, self.param_size)  # Create a fitness evaluator
+
+        # Loop through each individual and evaluate its fitness
+        for individual in pop:
+            individual.evaluate_fitness(fitness_evaluator.evaluate_fitness,
+                                        individual.penalty_function)  # Call evaluate_fitness for each individual
 
     def _record_generation(self, gen):
-        if self.fitness_values.ndim == 1:
-            best_index = np.argmin(self.fitness_values)
-        else:
-            fronts, _ = nds.NonDominatedSorting().nds(self.fitness_values)
-            best_index = fronts[0][0]
+        # Find the individual with the best fitness (assuming minimization)
+        best_individual = min(self.pop, key=lambda ind: ind.fitness)
 
-        best_fitness = self.fitness_values[best_index]
-        best_population = self.pop[best_index]
+        best_fitness = best_individual.fitness
+        best_solution = best_individual.solution  # Access the solution of the best individual
+
         self.best_fitness_values.append(best_fitness)
+
         print(f"Best Fitness Value: {best_fitness} at Generation {gen}")
         with open('C:/Users/vyshn/OneDrive/Desktop/genetic_algorithm_results.csv', 'a', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow([gen, best_fitness] + best_population.tolist())
+            writer.writerow([gen, best_fitness] + best_solution.tolist())
 
     def stats(self):
+        # Return or print the best solution after the GA run
         best_gen = np.argmin(self.best_fitness_values)
         best_fitness = self.best_fitness_values[best_gen]
 
@@ -132,22 +144,34 @@ class GeneticAlgorithm:
         plt.show()
 
     def predict_fitness(self, gen, training_pop, training_fitness, offsprings):
-        dp = DatasetProcessor(training_pop, training_fitness)
+        dp = DatasetProcessor(training_pop, np.array(training_fitness).reshape(-1, 1))
         mlp_model = mlp.MLPClassifierModel(dp)
+
+        # Train or retrain the model based on the generation number
         if gen == 1:
             mlp_model.train()
         else:
             mlp_model.retrain_model()
-        offsprings_predicted_values = np.array([])
-        for i in range(self.pop_size):
+
+        # Loop through each offspring and update its fitness directly
+        for i, offspring in enumerate(offsprings):
             current_predicted_values = []
+
+            # Predict fitness for the offspring based on the training population
             for j in range(len(training_pop)):
                 current_predicted = mlp_model.predict_with_saved_model(
-                    pd.DataFrame(np.concatenate((offsprings[i], training_pop[j]), axis=0).reshape(1, -1),
+                    pd.DataFrame(np.concatenate((offspring.solution, training_pop[j]), axis=0).reshape(1, -1),
                                  columns=[f'X{j + 1}' for j in range(0, 2 * self.param_size)]))
                 current_predicted_values.append(current_predicted[0])
-            val = dp.forClassification(training_fitness, current_predicted_values)
-            # Assuming val is the array you want to concatenate with offsprings_predicted_values
-            offsprings_predicted_values = np.append(offsprings_predicted_values, val)
 
-        return offsprings_predicted_values
+            # Calculate the final fitness value for the offspring
+            val = dp.forClassification(training_fitness, current_predicted_values)
+
+            # Convert the scalar value to ndarray before assigning it
+            offspring.fitness = val.item() # Now it’s a 1D ndarray
+
+        return  # Y No need to return anything, as offsprings are updated in-place
+
+
+
+

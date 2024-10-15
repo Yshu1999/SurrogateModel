@@ -4,8 +4,8 @@ from GeneticAlgorithm import GeneticAlgorithm
 
 def main():
     # Define problem parameters
-    num_gen = 20  # Number of generations
-    pop_size = 30 # Population size
+    num_gen = 4  # Number of generations
+    pop_size = 4  # Population size
     param_size = 10  # Number of parameters (or genes)
     lb = 0  # Lower bounds of the parameters
     ub = 1  # Upper bounds of the parameters
@@ -14,7 +14,7 @@ def main():
     problem = "ackley"
 
     # Create an instance of the GeneticAlgorithm
-    ga = GeneticAlgorithm(num_gen, problem, pop_size, param_size, lb, ub)
+    ga = GeneticAlgorithm(num_gen, pop_size, param_size, lb, ub, problem)
 
     # Initialize the population
     ga.initialize()
