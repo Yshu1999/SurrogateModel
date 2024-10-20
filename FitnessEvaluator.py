@@ -17,6 +17,7 @@ class FitnessEvaluator:
             "bukin": self.bukin,
             "zdt1": self.zdt1,
             "zdt2": self.zdt2,
+
             "cross_in_tray": self.cross_in_tray,
             "drop_wave": self.drop_wave,
             "eggholder": self.eggholder,
@@ -51,6 +52,10 @@ class FitnessEvaluator:
             "easom_function": self.easom_function,
             "michalewicz_function": self.michalewicz_function,
             "beale_function": self.beale_function,
+            "himmelblau": self.himmelblau,
+            "rosenbrock": self.rosenbrock,
+            "g01": self.g01,
+
         }
 
         if problem_name in self.problems:
@@ -58,8 +63,9 @@ class FitnessEvaluator:
         else:
             raise ValueError(f"Problem '{problem_name}' is not defined.")
 
-    def evaluate_fitness(self, population):
-        return self.problem(population)
+    def evaluate_fitness(self, i):
+        return self.problem(i)
+
     def zdt1(self, population):
         f1 = population[:, 0]
         g = 1 + (9 / (self.num_variables - 1)) * np.sum(population[:, 1:], axis=1)
@@ -78,20 +84,135 @@ class FitnessEvaluator:
 
         :return: Tuple of arrays (lower_bound, upper_bound)
         """
-        lower_bound = np.zeros(self.num_variables)
-        upper_bound = np.ones(self.num_variables)
+        if self.problem == self.g01:
+            # Specific bounds for g01
+            lower_bound = [0] * 9 + [0] * 3 + [0] * 1
+            upper_bound = [1] * 9 + [100] * 3 + [1] * 1
+        elif self.problem == self.g02:
+            lower_bound = np.zeros(self.num_variables)
+            upper_bound = [10]*self.num_variables
+        else:
+            # Default bounds for other problems
+            lower_bound = np.zeros(self.num_variables)
+            upper_bound = np.ones(self.num_variables)
         return lower_bound, upper_bound
+
+    def g01(self, x):
+        """
+       g01 Problem - Fitness and Constraints n=13
+       f(x) = 5 * sum(x1 to x4) - 5 * sum(x1^2 to x4^2) - sum(x5 to x13)
+       with given constraints.
+       """
+        if x.ndim == 2 and x.shape[0] == 1:  # Check if x is 2D and contains one individual
+            x = x.flatten()
+        # Calculate fitness
+        f = 5 * np.sum(x[:4]) - 5 * np.sum(x[:4] ** 2) - np.sum(x[4:13])
+
+        # Constraints
+        g1 = 2 * x[0] + 2 * x[1] + x[9] + x[10] - 10
+        g2 = 2 * x[0] + 2 * x[2] + x[9] + x[11] - 10
+        g3 = 2 * x[1] + 2 * x[2] + x[10] + x[11] - 10
+        g4 = -8 * x[0] + x[9]
+        g5 = -8 * x[1] + x[10]
+        g6 = -8 * x[2] + x[11]
+        g7 = -2 * x[3] - x[4] + x[9]
+        g8 = -2 * x[5] - x[6] + x[10]
+        g9 = -2 * x[7] - x[8] + x[11]
+
+        # Penalties for constraint violations
+        constraints = [g1, g2, g3, g4, g5, g6, g7, g8, g9]
+        total_penalty = sum([max(0, constraint) ** 2 for constraint in constraints])
+
+        # Return the objective value with penalties added
+        return f + total_penalty
+
+    def g02(self, x):
+        """
+        g02 Problem - Fitness and Constraints
+        f(x) = |sum(cos^4(xi)) - 2 * prod(cos^2(xi)) / sqrt(sum(i * xi^2))|   n=20
+        subject to given constraints.
+        """
+        n = len(x)  # Number of variables (n = 20)
+
+        # Objective function
+        term1 = np.sum(np.cos(x) ** 4)
+        term2 = 2 * np.prod(np.cos(x) ** 2)
+        term3 = np.sqrt(np.sum(np.arange(1, n + 1) * x ** 2))
+        f = np.abs(term1 - term2 / term3)
+
+        # Constraints
+        g1 = 0.75 - np.prod(x)
+        g2 = np.sum(x) - 7.5 * n
+
+        # Penalty for constraint violations
+        constraints = [g1, g2]
+        total_penalty = sum([max(0, constraint) ** 2 for constraint in constraints])
+
+        # Return the objective value with penalties
+        return f + total_penalty
+
+    def g03(self, x):
+        """
+        g03 Problem - Fitness and Constraints n=10
+        f(x) = -sqrt(n)^n * prod(xi)
+        subject to given constraint.
+        """
+        n = len(x)  # Number of variables (n = 10)
+
+        # Objective function
+        f = -np.sqrt(n) ** n * np.prod(x)
+
+        # Constraint
+        h1 = np.sum(x ** 2) - 1
+
+        # Penalty for constraint violations
+        total_penalty = max(0, np.abs(h1)) ** 2  # Equality constraint is penalized using absolute value
+
+        # Return the objective value with penalties
+        return f + total_penalty
 
     def ackley(self, x):
         a = 20
         b = 0.2
         c = 2 * np.pi
-        d = x.shape[1]  # Get the number of dimensions (columns)
 
-        term1 = -a * np.exp(-b * np.sqrt(np.sum(x ** 2, axis=1) / d))
-        term2 = -np.exp(np.sum(np.cos(c * x), axis=1) / d)
+        if x.ndim == 1:
+            # Single individual case
+            d = x.shape[0]  # number of dimensions (columns)
+            term1 = -a * np.exp(-b * np.sqrt(np.sum(x ** 2) / d))
+            term2 = -np.exp(np.sum(np.cos(c * x)) / d)
+        else:
+            # Population case (each row is an individual)
+            d = x.shape[1]  # number of dimensions (columns)
+            term1 = -a * np.exp(-b * np.sqrt(np.sum(x ** 2, axis=1) / d))
+            term2 = -np.exp(np.sum(np.cos(c * x), axis=1) / d)
 
-        return term1 + term2 + a + np.e
+        result = term1 + term2 + a + np.e
+        return result.item()
+
+    def rosenbrock(self, x):
+        # Calculate the fitness (Rosenbrock function)
+        x1, x2 = x[0][0], x[0][1]
+        fitness = (1 - x1) ** 2 + 100 * (x2 - x1 ** 2) ** 2
+        # Initialize penalty
+        total_penalty = 0
+        # Check if constraints are part of the problem (i.e., problem has constraints)
+        # Constraint 1: x1 + x2 <= 2
+        g1 = x1 + x2 - 2
+        if g1 > 0:  # If constraint is violated
+            total_penalty += g1 ** 2  # Apply quadratic penalty
+
+        # Constraint 2: x1 * x2 >= -1
+        g2 = -(x1 * x2 + 1)
+        if g2 > 0:  # If constraint is violated
+            total_penalty += g2 ** 2  # Apply quadratic penalty
+
+        # Return the fitness and the total penalty
+        return fitness + total_penalty  # Minimize the objective with penalties for violations
+
+    def himmelblau(self, x):
+        x1, x2 = x[0][0], x[0][1]
+        return (x1 ** 2 + x2 - 11) ** 2 + (x1 + x2 ** 2 - 7) ** 2
 
     def bukin(self, x):
         term1 = 100 * np.sqrt(np.abs(x[:, 1] - 0.01 * x[:, 0] ** 2))

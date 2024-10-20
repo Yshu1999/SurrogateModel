@@ -9,20 +9,25 @@ import FitnessEvaluator as fe
 import SelectNextPopulation as snp
 import matplotlib.pyplot as plt
 import csv
+from individual import Individual
 import MLPClassifier as mlp
 
 from DataProcessor import DatasetProcessor
 
 
 class GeneticAlgorithm:
-    def __init__(self, num_gen, problem, pop_size, param_size, lb, ub):
+    def __init__(self, num_gen, pop_size, param_size, problem):
         self.num_gen = num_gen
         self.problem = problem
         self.pop_size = pop_size
         self.param_size = param_size
-        self.lb = lb
-        self.ub = ub
+        self.fitness_evaluator = fe.FitnessEvaluator(self.problem, self.param_size)
+        self.lb, self.ub = self.fitness_evaluator.get_bounds()
         self.pop = None
+        self.fitness_values = None
+        self.best_fitness_values = []
+        self.training_pop = []
+        self.training_fitness = []
         self.pop_pure_ga = None
         self.pop_hybrid_ga = None
         self.fitness_values_hybrid_ga = None
@@ -31,128 +36,97 @@ class GeneticAlgorithm:
         self.best_fitness_values_hybrid_ga = []
 
     def initialize(self):
+        # Initialize the population as a list of Individual objects
+        self.pop = [Individual(np.random.uniform(self.lb, self.ub, self.param_size)) for _ in range(self.pop_size)]
+        self.evaluate_population_fitness(self.pop)
+        for individual in self.pop:
+            self.training_pop.append(individual.solution)  # Append the solution (parameter values)
+            self.training_fitness.append(individual.fitness)  # Append the fitness value
+        for idx, individual in enumerate(self.pop):
+            print(f"Individual[{idx}]: Solution = {individual.solution}, Fitness = {individual.fitness}")
         # Initialize the population
-        self.pop = gp.GeneratePopulation(self.pop_size, self.param_size, self.lb,
-                                         self.ub).generate_population()
         self.pop_hybrid_ga = self.pop.copy()
         self.pop_pure_ga = self.pop.copy()
 
     def run(self):
         random_seed = 42
         random_state = np.random.RandomState(random_seed)
-        # Evaluate the initial population's fitness
-        self.fitness_values_pure_ga = fe.FitnessEvaluator(self.problem).evaluate_fitness(self.pop)
-        self.fitness_values_hybrid_ga = self.fitness_values_pure_ga.copy()  # Same initial fitness values for hybrid GA
-
         # Record initial population
         self._record_generation(0, self.pop, self.fitness_values_pure_ga, self.pop, self.fitness_values_hybrid_ga)
-
-        training_pop = self.pop
-        training_fitness = self.fitness_values_hybrid_ga.reshape(-1, 1)
 
         # Run the genetic algorithm for num_gen generations
         for gen in range(1, self.num_gen + 1):
             # Generate offsprings for pure GA and hybrid GA separately
             # Initialize GeneratePopulation once
             x = gp.GeneratePopulation(self.pop_size, self.param_size, self.lb, self.ub)
-
             # Generate offsprings for pure GA
             offsprings_pure_ga = x.generate_offsprings(
-                self.pop_pure_ga, self.fitness_values_pure_ga, random_state
+                self.pop_pure_ga, random_state
             )
-
             # Generate offsprings for hybrid GA
             offsprings_hybrid_ga = x.generate_offsprings(
-                self.pop_hybrid_ga, self.fitness_values_hybrid_ga, random_state
+                self.pop_hybrid_ga, random_state
             )
-
-            # Parallel execution for fitness evaluation (pure GA and hybrid GA)
-            offsprings_fitness_values_pure_ga, offsprings_fitness_values_hybrid = self.run_parallel_evaluations(
-                gen, offsprings_pure_ga, offsprings_hybrid_ga, training_pop, training_fitness)
+            self.run_parallel_evaluations(
+                gen, offsprings_pure_ga, offsprings_hybrid_ga, self.training_pop, self.training_fitness)
 
             # Combine population and offsprings for pure GA
-            combined_pure_ga = np.vstack((self.pop_pure_ga, offsprings_pure_ga))
-            combined_fitness_values_pure_ga = np.hstack(
-                (self.fitness_values_pure_ga, offsprings_fitness_values_pure_ga))
-
+            combined_pure_ga = self.pop_pure_ga + offsprings_pure_ga
+            combined_fitness_values_pure_ga = np.array([individual.fitness for individual in combined_pure_ga])
             # Combine population and offsprings for hybrid GA
-            combined_hybrid_ga = np.vstack((self.pop_hybrid_ga, offsprings_hybrid_ga))
-            combined_fitness_values_hybrid_ga = np.hstack(
-                (self.fitness_values_hybrid_ga, offsprings_fitness_values_hybrid))
-
+            combined_hybrid_ga = self.pop_hybrid_ga + offsprings_hybrid_ga
+            combined_fitness_values_hybrid_ga = np.array([individual.fitness for individual in combined_hybrid_ga])
             # Selection for pure GA
-            self.pop_pure_ga, self.fitness_values_pure_ga = self.update_population_pure_ga(
-                combined_pure_ga, combined_fitness_values_pure_ga, gen)
-
+            self.pop_pure_ga = self.update_population(combined_pure_ga)
             # Selection for hybrid GA
-            self.pop_hybrid_ga, self.fitness_values_hybrid_ga = self.update_population_hybrid_ga(
-                combined_hybrid_ga, combined_fitness_values_hybrid_ga, gen)
+            self.pop_hybrid_ga = self.update_population(combined_hybrid_ga)
             if gen % 2 == 0:
-                training_pop = np.vstack((training_pop, self.pop_hybrid_ga))
-                training_fitness = np.vstack((training_fitness, self.fitness_values_hybrid_ga.reshape(-1, 1)))
-            # Record the best fitness and population for this generation (pure GA)
+                for individual in self.pop_hybrid_ga:
+                    self.training_pop.append(individual.solution)  # Append the solution (parameter values)
+                    self.training_fitness.append(individual.fitness)  # Append the fitness value
             self._record_generation(gen, self.pop_pure_ga, self.fitness_values_pure_ga, self.pop_hybrid_ga,
                                     self.fitness_values_hybrid_ga)
 
     def run_parallel_evaluations(self, gen, offsprings_pure_ga, offsprings_hybrid_ga, training_pop, training_fitness):
         # Define parallel evaluation for pure GA and hybrid GA
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future_pure_ga = executor.submit(self.evaluate_pure_ga, offsprings_pure_ga)
-            future_hybrid_ga = executor.submit(self.evaluate_hybrid_ga, gen, offsprings_hybrid_ga, training_pop,
-                                               training_fitness)
-            offsprings_fitness_values_pure_ga = future_pure_ga.result()
-            offsprings_fitness_values_hybrid = future_hybrid_ga.result()
-
-        return offsprings_fitness_values_pure_ga, offsprings_fitness_values_hybrid
+            executor.submit(self.evaluate_pure_ga, offsprings_pure_ga)
+            executor.submit(self.evaluate_hybrid_ga, gen, offsprings_hybrid_ga, self.training_pop,
+                            self.training_fitness)
+        return
 
     def evaluate_pure_ga(self, offsprings):
-        # Pure GA fitness evaluation (applied on all generations)
-        return fe.FitnessEvaluator(self.problem).evaluate_fitness(offsprings)
+        self.evaluate_population_fitness(offsprings)
 
     def evaluate_hybrid_ga(self, gen, offsprings, training_pop, training_fitness):
         # Hybrid GA fitness evaluation (predict on odd generations)
         if gen % 2 == 0:
-            return fe.FitnessEvaluator(self.problem).evaluate_fitness(offsprings)
+            self.evaluate_population_fitness(offsprings)
         else:
-            return self.predict_fitness(gen, training_pop, pd.DataFrame(training_fitness), offsprings)
+            self.predict_fitness(gen, self.training_pop, pd.DataFrame(
+                self.training_fitness), offsprings)
 
-    def update_population_pure_ga(self, combined, combined_fitness_values, gen):
-        # Selection logic for pure GA
-        if combined_fitness_values.ndim == 1:
-            sorted_indices = np.argsort(combined_fitness_values)
-            best_indices = sorted_indices[:min(self.pop_size, len(sorted_indices))]
-            new_pop = combined[best_indices]
-            new_fitness_values = combined_fitness_values[best_indices]
-        else:
-            fronts, ranks = nds.NonDominatedSorting().nds(combined_fitness_values)
-            new_pop = snp.SelectNextPopulation().select_next_population(combined, combined_fitness_values, fronts,
-                                                                        self.pop_size)
 
-        return new_pop, new_fitness_values
+    def evaluate_population_fitness(self, pop):
+        """Evaluate fitness for each individual in the population."""
+        # Loop through each individual and evaluate its fitness
+        for individual in pop:
+            individual.evaluate_fitness(self.fitness_evaluator.evaluate_fitness)  # Call evaluate_fitness for each individual
 
-    def update_population_hybrid_ga(self, combined, combined_fitness_values, gen):
-        # Selection logic for hybrid GA (uses predicted fitness's in odd generations)
-        if combined_fitness_values.ndim == 1:
-            sorted_indices = np.argsort(combined_fitness_values)
-            best_indices = sorted_indices[:min(self.pop_size, len(sorted_indices))]
-            new_pop = combined[best_indices]
-            new_fitness_values = combined_fitness_values[best_indices]
-        else:
-            fronts, ranks = nds.NonDominatedSorting().nds(combined_fitness_values)
-            new_pop = snp.SelectNextPopulation().select_next_population(combined, combined_fitness_values, fronts,
-                                                                        self.pop_size)
+    def update_population(self, combined):
+        combined.sort(key=lambda ind: ind.fitness)
+        # Select the best individuals based on fitness
+        new_pop = combined[:self.pop_size]
+        return new_pop
 
-            # Hybrid fitness evaluation (in odd generations, predicted fitness is used)
-
-        return new_pop, new_fitness_values
-
-    def _record_generation(self, gen, population_pure_ga, fitness_values_pure_ga, population_hybrid_ga,
+    def _record_generation(self, gen, population_pure_ga, fitnenew_popss_values_pure_ga, population_hybrid_ga,
                            fitness_values_hybrid_ga):
         # Record results for pure GA
         with open(f'C:/Users/vyshn/OneDrive/Desktop/genetic_algorithm_results_pure.csv', 'a', newline='') as f_pure:
             writer_pure = csv.writer(f_pure)
-            best_fitness_value_pure = np.min(fitness_values_pure_ga)  # Assuming minimization for pure GA
-            best_individual_pure = population_pure_ga[np.argmin(fitness_values_pure_ga)]
+            best_individual = min(self.pop_pure_ga, key=lambda ind: ind.fitness)
+            best_fitness_value_pure = best_individual.fitness
+            best_individual_pure = best_individual.solution  # Access the solution of the best individual
             self.best_fitness_values_pure_ga.append(best_fitness_value_pure)
             # Write to the CSV file for pure GA
             writer_pure.writerow([gen, best_fitness_value_pure] + list(best_individual_pure))
@@ -163,8 +137,9 @@ class GeneticAlgorithm:
         # Record results for hybrid GA
         with open(f'C:/Users/vyshn/OneDrive/Desktop/genetic_algorithm_results_hybrid.csv', 'a', newline='') as f_hybrid:
             writer_hybrid = csv.writer(f_hybrid)
-            best_fitness_value_hybrid = np.min(fitness_values_hybrid_ga)  # Assuming minimization for hybrid GA
-            best_individual_hybrid = population_hybrid_ga[np.argmin(fitness_values_hybrid_ga)]
+            best_individual = min(self.pop_hybrid_ga, key=lambda ind: ind.fitness)
+            best_fitness_value_hybrid = best_individual.fitness  # Assuming minimization for hybrid GA
+            best_individual_hybrid = best_individual.solution
             self.best_fitness_values_hybrid_ga.append(best_fitness_value_hybrid)
             # Write to the CSV file for hybrid GA
             writer_hybrid.writerow([gen, best_fitness_value_hybrid] + list(best_individual_hybrid))
@@ -196,7 +171,6 @@ class GeneticAlgorithm:
         ax[0].set_xlabel('Generation')
         ax[0].set_ylabel('Best Fitness Value')
         ax[0].grid(True)
-        ax[0].legend()
 
         # Plot 2: MSE vs. Generation
         ax[1].plot(generations, error_list, marker='o', linestyle='-', color='r', label='MSE')
@@ -213,22 +187,30 @@ class GeneticAlgorithm:
         plt.show()
 
     def predict_fitness(self, gen, training_pop, training_fitness, offsprings):
-        dp = DatasetProcessor(training_pop, training_fitness)
+        dp = DatasetProcessor(training_pop, np.array(training_fitness).reshape(-1, 1))
         mlp_model = mlp.MLPClassifierModel(dp)
+
+        # Train or retrain the model based on the generation number
         if gen == 1:
             mlp_model.train()
         else:
             mlp_model.retrain_model()
-        offsprings_predicted_values = np.array([])
-        for i in range(self.pop_size):
+
+        # Loop through each offspring and update its fitness directly
+        for i, offspring in enumerate(offsprings):
             current_predicted_values = []
+
+            # Predict fitness for the offspring based on the training population
             for j in range(len(training_pop)):
                 current_predicted = mlp_model.predict_with_saved_model(
-                    pd.DataFrame(np.concatenate((offsprings[i], training_pop[j]), axis=0).reshape(1, -1),
+                    pd.DataFrame(np.concatenate((offspring.solution, training_pop[j]), axis=0).reshape(1, -1),
                                  columns=[f'X{j + 1}' for j in range(0, 2 * self.param_size)]))
                 current_predicted_values.append(current_predicted[0])
-            val = dp.forClassification(training_fitness, current_predicted_values)
-            # Assuming val is the array you want to concatenate with offsprings_predicted_values
-            offsprings_predicted_values = np.append(offsprings_predicted_values, val)
 
-        return offsprings_predicted_values
+            # Calculate the final fitness value for the offspring
+            val = dp.forClassification(training_fitness, current_predicted_values)
+
+            # Convert the scalar value to ndarray before assigning it
+            offspring.fitness = val.item()  # Now it’s a 1D ndarray
+
+        return  # Y No need to return anything, as offsprings are updated in-place

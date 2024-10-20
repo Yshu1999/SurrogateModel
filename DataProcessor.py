@@ -79,7 +79,7 @@ class DatasetProcessor:
 
         #Data Normalization
         dec_val = self.pop
-        obj = self.dataNormalization(self.fitness)
+        obj = self.fitness
 
         #Splitting Data into Train and Test
         X_train, X_test, y_train, y_test = self.split_data(dec_val, obj)

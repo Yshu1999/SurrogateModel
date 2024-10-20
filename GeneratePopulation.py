@@ -1,52 +1,44 @@
 import none
 import numpy as np
+from individual import Individual
 import FitnessEvaluator as fe
 import random
 
-
 class GeneratePopulation:
     def __init__(self, pop_size, param_size,
-                 lower_bound, upper_bound, ):
+                 lower_bounds, upper_bounds, ):
         self.param_size = param_size
         self.pop_size = pop_size
-        self.lower_bound = lower_bound
-        self.upper_bound = upper_bound
+        self.lower_bound = lower_bounds
+        self.upper_bound = upper_bounds
 
-    def generate_population(self):
-        population = np.random.uniform(np.zeros(self.param_size), np.ones(self.param_size),
-                                       (self.pop_size, self.param_size))
-        return population
-
-    def generate_offsprings(self, population, fitness_values, random_state):
+    def generate_offsprings(self, population, random_state):
         offsprings = []
         parents = []
-
-        # Tournament Selection
-        is_multi_objective = fitness_values.ndim > 1
-
         for j in range(2 * self.pop_size):
+            # Select 3 random individuals for tournament selection
             tournament_selection_indexes = np.random.choice(len(population), 3, replace=False)
-            # Get fitness values for the selected individuals
-            #print(f"fitness_values size: {len(fitness_values)}")
-            # print(f"tournament_selection_indexes: {tournament_selection_indexes}")
-            tournament_fitness = fitness_values[tournament_selection_indexes]
-
-            if is_multi_objective:  # Multi-objective case
-                selection_criteria = np.sum(tournament_fitness, axis=1)
-            else:  # Single-objective case
-                selection_criteria = tournament_fitness
-
-            selected = tournament_selection_indexes[np.argmin(selection_criteria)]
-            parents.append(population[selected])
-        # Crossover
+            tournament_individuals = [population[idx] for idx in tournament_selection_indexes]
+            # Get fitness values directly from the individual objects
+            tournament_fitness = [ind.fitness for ind in tournament_individuals]
+            selection_criteria = tournament_fitness  # Single-objective case
+            # Select the individual with the best fitness
+            selected_idx = np.argmin(selection_criteria)
+            parents.append(tournament_individuals[selected_idx])
+        # Crossover to produce offsprings
         for i in range(0, self.pop_size, 2):
-            parent1 = parents[i]
-            parent2 = parents[i + 1]
-            child1, child2 = self.sbx(parent1, parent2, random_state )
+            parent1 = parents[i].solution  # Extract solution from parent
+            parent2 = parents[i + 1].solution  # Extract solution from parent
+            child1_solution, child2_solution = self.sbx(parent1, parent2, random_state)
+
+            # Create new Individual objects for the offspring
+            child1 = Individual(child1_solution)  # Assuming Individual class takes solution as input
+            child2 = Individual(child2_solution)  # Assuming Individual class takes solution as input
+
             offsprings.append(child1)
             offsprings.append(child2)
 
-        return np.array(offsprings)[0:self.pop_size]
+        return offsprings
 
     def sbx(self, parent1, parent2, random_state=none, crossover_prob=0.9):
         eta = 20
@@ -77,12 +69,11 @@ class GeneratePopulation:
     def polynomial_mutation(self, offspring, random_state = none, mutation_rate=0.05, eta_m=20):
         num_variables = offspring.shape[0]
         mutated_offspring = np.copy(offspring)
-
         for j in range(num_variables):
             if random_state.rand() < mutation_rate:
                 y = offspring[j]
-                yl = 0  # Lower bound of the variable
-                yu = 1  # Upper bound of the variable
+                yl = self.lower_bound  # Lower bound of the variable
+                yu = self.upper_bound  # Upper bound of the variable
 
                 u = random_state.rand()  # Random number between 0 and 1
                 if u <= 0.5:
@@ -94,6 +85,6 @@ class GeneratePopulation:
                     delta = delta_i * (yu - y)
 
                 # Apply the mutation and clip the value to ensure it stays within bounds
-                mutated_offspring[j] = np.clip(y + delta, yl, yu)
+                mutated_offspring[j] = np.clip(y + delta, yl[j], yu[j])
 
         return mutated_offspring
