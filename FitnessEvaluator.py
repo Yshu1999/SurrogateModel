@@ -10,14 +10,12 @@ class FitnessEvaluator:
         :param num_variables: Number of decision variables (n). Default is 30.
         """
         self.num_variables = num_variables
-
         # Dictionary mapping problem names to methods
         self.problems = {
             "ackley": self.ackley,
             "bukin": self.bukin,
             "zdt1": self.zdt1,
             "zdt2": self.zdt2,
-
             "cross_in_tray": self.cross_in_tray,
             "drop_wave": self.drop_wave,
             "eggholder": self.eggholder,
@@ -158,16 +156,12 @@ class FitnessEvaluator:
         subject to given constraint.
         """
         n = len(x)  # Number of variables (n = 10)
-
         # Objective function
         f = -np.sqrt(n) ** n * np.prod(x)
-
         # Constraint
         h1 = np.sum(x ** 2) - 1
-
         # Penalty for constraint violations
         total_penalty = max(0, np.abs(h1)) ** 2  # Equality constraint is penalized using absolute value
-
         # Return the objective value with penalties
         return f + total_penalty
 
